@@ -14,7 +14,70 @@ The aim is to measure beta- and sigma-convergence on a variety of simulated data
 
 ```{r}
 require(dplyr)
-require(tidyr)
+require(purrr)
 require(acid)
+require(ineq)
+require(ggplot2)
 ```
 
+## Description of datasets
+
+I will generate a couple of scenarios. They will all involve 100 fictional regions with different historical developments of life expectancy.
+
+## Scenario 1: Nothing ever changes
+
+In this scenario, there will be no divergence or convergence at all. I expect parallel flat lines on plots, no beta-convergence and no sigma-convergence. 
+
+```{r}
+scenario1 <- expand.grid(area=1:100, year=1:20) %>% 
+  mutate(LE0 = as.numeric(rep(rnorm(100, 80, 5), 20))) %>%
+  mutate(LE = LE0*1)
+```
+
+```{r}
+ggplot(scenario1) +
+  geom_line(aes(x = year, y = LE, group = area, colour = area))
+```
+
+```{r}
+lm(LE ~ LE0, scenario1) %>% summary
+
+ggplot(scenario1) +
+  geom_point(aes(x = LE0, y = LE, colour = area))
+```
+
+```{r}
+scenario1 %>% group_by(year) %>% summarise(Gini = gini(LE)$`Gini`) %>%
+  ggplot() +
+    geom_point(aes(x = year, y = Gini))
+```
+
+## Scenario 2: We improve together
+
+Now we add a linear trend, but keep the lines parallel.
+
+```{r}
+
+scenario2 <- expand.grid(area=1:100, year=1:20) %>% 
+  mutate(LE0 = as.numeric(rep(rnorm(100, 80, 5), 20))) %>%
+  mutate(LE = LE0 + year/5)
+
+```
+
+```{r}
+ggplot(scenario2) +
+  geom_line(aes(x = year, y = LE, group = area, colour = area))
+```
+
+```{r}
+lm(LE ~ LE0, scenario2) %>% summary
+
+ggplot(scenario2) +
+  geom_point(aes(x = LE0, y = LE, colour = area))
+```
+
+```{r}
+scenario2 %>% group_by(year) %>% summarise(minmax = max(LE) - min(LE), Gini = ineq(LE, type = "Gini")) %>%
+  ggplot() +
+    geom_point(aes(x = year, y = minmax))
+```
