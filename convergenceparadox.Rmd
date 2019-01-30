@@ -1,0 +1,20 @@
+---
+title: "Beta-convergence and Sigma-divergence - a convergence paradox?"
+author: "Rok Hrzic"
+date: "30 January 2019"
+output: html_document
+---
+
+## Motivation
+
+In health convergence literature, we often come across a result of simultaneous beta-convergence and sigma-divergence. The first one says that areas with initially poor performance have been improving faster than those with initially good performance. The second says that the overall dispersion is increasing in time. It is not entirely clear whether this occurance is a fallacy (regression to the mean) or a real occurence in health demography. 
+The aim is to measure beta- and sigma-convergence on a variety of simulated datasets to build understanding and intuition on this topic.
+
+## Loading packages
+
+```{r}
+require(dplyr)
+require(tidyr)
+require(acid)
+```
+
