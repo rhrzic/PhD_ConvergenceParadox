@@ -15,69 +15,233 @@ The aim is to measure beta- and sigma-convergence on a variety of simulated data
 ```{r}
 require(dplyr)
 require(purrr)
-require(acid)
 require(ineq)
 require(ggplot2)
+require(gridExtra)
 ```
 
-## Description of datasets
+## Datasets and their analysis
 
-I will generate a couple of scenarios. They will all involve 100 fictional regions with different historical developments of life expectancy.
+I will generate datasets that reflect various scenarios. They will include 10 fictional regions with different developments of life expectancy over 20 years.
 
-## Scenario 1: Nothing ever changes
-
-In this scenario, there will be no divergence or convergence at all. I expect parallel flat lines on plots, no beta-convergence and no sigma-convergence. 
-
-```{r}
-scenario1 <- expand.grid(area=1:100, year=1:20) %>% 
-  mutate(LE0 = as.numeric(rep(rnorm(100, 80, 5), 20))) %>%
-  mutate(LE = LE0*1)
-```
-
-```{r}
-ggplot(scenario1) +
-  geom_line(aes(x = year, y = LE, group = area, colour = area))
-```
-
-```{r}
-lm(LE ~ LE0, scenario1) %>% summary
-
-ggplot(scenario1) +
-  geom_point(aes(x = LE0, y = LE, colour = area))
-```
-
-```{r}
-scenario1 %>% group_by(year) %>% summarise(Gini = gini(LE)$`Gini`) %>%
-  ggplot() +
-    geom_point(aes(x = year, y = Gini))
-```
-
-## Scenario 2: We improve together
-
-Now we add a linear trend, but keep the lines parallel.
+Each of the scenarios will be evaluated for beta-convergence via a regression of annualised growth of LE on the initial value of LE, and for sigma-convergence via a calculation of the Gini coefficient, the absolute gap, the coefficient of variation and Thiel index. 
 
 ```{r}
 
-scenario2 <- expand.grid(area=1:100, year=1:20) %>% 
-  mutate(LE0 = as.numeric(rep(rnorm(100, 80, 5), 20))) %>%
-  mutate(LE = LE0 + year/5)
+analyse_scenario <- function(scenario) {
+  
+  scenario <- scenario %>% mutate(area = as.factor(area)) %>%
+    group_by(year) %>% mutate(aveLE = mean(LE)) %>% ungroup
+  
+  a <- ggplot(scenario) +
+    geom_line(aes(x = year, y = LE, group = area, colour = area)) +
+    geom_point(aes(x = year, y = aveLE))
+  
+  b <- summary(lm((LE/LE0)/20 ~ LE0, scenario))$coefficients[2,] %>% format(x, scientific = F)
 
+  c <- ggplot(scenario) +
+    geom_point(aes(x = LE0, y = LE, colour = area))
+  
+  d <- scenario %>% group_by(year) %>% 
+    summarise(Gini = ineq(LE, type = "Gini"),
+              gap = max(LE) - min(LE),
+              COV = ineq(LE, type = "var"),
+              Theil = ineq(LE, type = "Theil"))
+  
+  e <- ggplot(d, aes(x = year, y = Gini)) +
+        geom_point() +
+        geom_smooth(method = "lm")
+  
+  f <- ggplot(d, aes(x = year, y = gap)) +
+     geom_point()+
+        geom_smooth(method = "lm")
+  
+  g <- ggplot(d, aes(x = year, y = COV)) +
+     geom_point()+
+        geom_smooth(method = "lm")
+  
+  h <- ggplot(d, aes(x = year, y = Theil)) +
+     geom_point()+
+        geom_smooth(method = "lm")
+  
+  i <- grid.arrange(e,f,g,h, nrow = 2)
+  
+  j <- summary(lm(Gini ~ year, d))$coefficients[2,] %>% format(x, scientific = F)
+
+
+  results <- list(a, b, c, i, j)
+  
+  return(results)
+}
 ```
+
+## Static scenarios - no real changes in rank
+
+### Scenario 1: Stability
+
+In this scenario, there will be no change in life expectancy. I expect parallel flat lines on plots, no beta-convergence and no sigma-convergence. 
 
 ```{r}
-ggplot(scenario2) +
-  geom_line(aes(x = year, y = LE, group = area, colour = area))
+scenario1 <- expand.grid(area=1:10, year=1:20) %>% 
+  mutate(LE0 = as.numeric(rep(sort(rnorm(10, 80, 2)), 20))) %>%
+  group_by(year, area) %>%
+  mutate(LE = LE0+rnorm(1,0,0.1)) %>%
+  ungroup
+
+analyse_scenario(scenario1)
 ```
+
+Indeed, there was no statistically significant beta-convergence and all sigma-convergence measures are flat. 
+
+### Scenario 2: We improve together
+
+Now we add a linear trend, but keep the lines parallel (no change in rank or gap).
 
 ```{r}
-lm(LE ~ LE0, scenario2) %>% summary
 
-ggplot(scenario2) +
-  geom_point(aes(x = LE0, y = LE, colour = area))
+scenario2 <- expand.grid(area=1:10, year=1:20) %>% 
+  mutate(LE0 = as.numeric(rep(sort(rnorm(10, 80, 2)), 20))) %>%
+  group_by(year, area) %>%
+  mutate(LE = LE0 + rnorm(1,0,0.1) + 2/20 * year) %>%
+  ungroup
+
+
+analyse_scenario(scenario2)
+
 ```
+
+We find no statistically significant beta-convergence, but significant sima-convergence (when considering Gini, CoV or Theil). I think this is a consequence of these measures depending on the mean of the distribution, which in our case increased, while the absolute differences between the units stayed the same.
+
+The literature says that beta-convergence is a necessary precondition of sigma-convergence, but I think this is true only when usind measures of dispersion such as range, sd and variance, which do not depend on the mean.
+
+## Unequal growth scenarios without rank change
+
+Here I include scenarios where the good get better and/or the poor get worse, i.e. the Matthew effect.
+
+### Scenario 3: Good get better
+
+Here the top regions improve life expectancy at twice the rate as other regions.
 
 ```{r}
-scenario2 %>% group_by(year) %>% summarise(minmax = max(LE) - min(LE), Gini = ineq(LE, type = "Gini")) %>%
-  ggplot() +
-    geom_point(aes(x = year, y = minmax))
+
+scenario3 <- expand.grid(area=1:10, year=1:20) %>% 
+  mutate(LE0 = as.numeric(rep(sort(rnorm(10, 80, 2)), 20))) %>%
+  mutate(LE = ifelse(area %in% c(8,9,10), LE0 + year * 2/20, LE0 + year * 1/20)) %>%
+  group_by(year, area) %>%
+  mutate(LE = LE + rnorm(1,0,0.1)) %>%
+  ungroup
+
+analyse_scenario(scenario3)
+
 ```
+
+We get significant beta-divergence (beta is positive!) as well as sigma-divergence, which is to be expected in such a sitiation.
+
+### Scenario 4: The worse-off stagnate
+
+Here most regions will improve at a certain pace, with the worst regions experiencing a much more languid pace of development. 
+
+```{r}
+
+scenario4 <- expand.grid(area=1:10, year=1:20) %>% 
+  mutate(LE0 = as.numeric(rep(sort(rnorm(10, 80, 2)), 20))) %>%
+  mutate(LE = ifelse(area %in% c(1,2,3), LE0 + year * 1/20, LE0 + year * 2/20)) %>%
+  group_by(year, area) %>%
+  mutate(LE = LE + rnorm(1,0,0.1)) %>%
+  ungroup
+
+analyse_scenario(scenario4)
+
+```
+
+As expected, beta-divergence and sigma-divergence are the results. 
+
+### Scenario 5: Regression to the mean
+
+Finally, here we test a scenario that is supposed to be one of the causes of the beta-convergence, sigma-divergence paradox. We will pretend that the worst of the regions starts with either one or two significant negative outliers, but then recovers the pace of development with the others.
+
+```{r}
+scenario5 <- expand.grid(area=1:10, year=1:20) %>% 
+  mutate(LE0 = as.numeric(rep(sort(rnorm(10, 80, 2)), 20))) %>%
+  mutate(LE = LE0 + year * 2/20) %>%
+  group_by(year, area) %>%
+  mutate(LE = LE + rnorm(1,0,0.1)) %>%
+  ungroup
+
+scenario5[scenario5$year == 1 & scenario5$area == 1,]$LE <- scenario5[scenario5$year == 1 & scenario5$area == 1,]$LE-2
+
+analyse_scenario(scenario5)
+```
+
+We fail to create a significant beta-convergence here, but get significant sigma-convergence - the opposite of what we are looking for. Let us try two outliers. 
+
+```{r}
+scenario5[scenario5$year == 2 & scenario5$area == 1,]$LE <- scenario5[scenario5$year == 2 & scenario5$area == 1,]$LE-1.5
+
+analyse_scenario(scenario5)
+```
+
+Same situation. It seems to me that the outlier hypothesis is not realistic. 
+
+## Rank changes
+
+In this set of scenarios, we will get areas to change rank.
+
+### Scenario 6: The laggards catch up
+
+The laggards here have four-times the LE growth compared to the rest.
+
+```{r}
+
+scenario6 <- expand.grid(area=1:10, year=1:20) %>% 
+  mutate(LE0 = as.numeric(rep(sort(rnorm(10, 80, 2)), 20))) %>%
+  mutate(LE = ifelse(area %in% c(1,2,3), LE0 + year * 4/20, LE0 + year * 1/20)) %>%
+  group_by(year, area) %>%
+  mutate(LE = LE + rnorm(1,0,0.1)) %>%
+  ungroup
+
+analyse_scenario(scenario6)
+
+```
+
+This looks like a classic catching up scenario, and it results in both beta- and sigma-convergence.
+
+### Scenario 7: The laggards catch up, but the middle flounders
+
+In this scenario, the top performers keep improving, the bottom performers catch up, and the middle sort of stays still.
+
+```{r}
+
+scenario7 <- expand.grid(area=1:10, year=1:20) %>% 
+  mutate(LE0 = as.numeric(rep(sort(rnorm(10, 80, 2)), 20))) %>%
+  mutate(LE = ifelse(area %in% c(1,2,3), LE0 + year * 3/20, LE0 + year * 1/20)) %>%
+  mutate(LE = ifelse(area %in% c(5,6,7), LE0 - year * 0.5/20, LE)) %>%
+  group_by(year, area) %>%
+  mutate(LE = LE + rnorm(1,0,0.1)) %>%
+  ungroup
+
+analyse_scenario(scenario7)
+
+```
+
+This results in both beta- and sigma-convergence, so no luck with recreating the paradox yet. 
+
+### Scenario 8: The laggards catch up, but the middle crash
+
+In this scenario,the bottom performers catch up, and the middle performers actually loose ground.
+
+```{r}
+
+scenario8 <- expand.grid(area=1:10, year=1:20) %>% 
+  mutate(LE0 = as.numeric(rep(sort(rnorm(10, 80, 2)), 20))) %>%
+  mutate(LE = ifelse(area %in% c(1,2,3), LE0 + year * 2/20, LE0 + year * 1/20)) %>%
+  mutate(LE = ifelse(area %in% c(4,5), LE0 - year * 1/20, LE)) %>%
+  group_by(year, area) %>%
+  mutate(LE = LE + rnorm(1,0,0.1)) %>%
+  ungroup
+
+analyse_scenario(scenario8)
+
+```
+
+This specific configuration recreates the paradox. We have the very bottom performers doing very well (catching up), and the mid-tier performers loosing substantial ground. It is very interesting that the scenario is very dependent on how many areas we include in which group. The next step is to hash out these limits more precisely. 
