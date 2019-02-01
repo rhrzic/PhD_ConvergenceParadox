@@ -8,7 +8,8 @@ output: html_document
 ## Motivation
 
 In health convergence literature, we often come across a result of simultaneous beta-convergence and sigma-divergence. The first one says that areas with initially poor performance have been improving faster than those with initially good performance. The second says that the overall dispersion is increasing in time. It is not entirely clear whether this occurance is a fallacy (regression to the mean) or a real occurence in health demography. 
-The aim is to measure beta- and sigma-convergence on a variety of simulated datasets to build understanding and intuition on this topic.
+
+The aim is to measure (unadjusted) beta- and sigma-convergence on a variety of simulated datasets to build understanding and intuition on this topic.
 
 ## Loading packages
 
@@ -31,7 +32,7 @@ Each of the scenarios will be evaluated for beta-convergence via a regression of
 analyse_scenario <- function(scenario) {
   
   scenario <- scenario %>% mutate(area = as.factor(area)) %>%
-    group_by(year) %>% mutate(aveLE = mean(LE)) %>% ungroup
+    group_by(year) %>% mutate(aveLE = mean(LE, na.rm = T)) %>% ungroup
   
   a <- ggplot(scenario) +
     geom_line(aes(x = year, y = LE, group = area, colour = area)) +
@@ -44,15 +45,15 @@ analyse_scenario <- function(scenario) {
   
   d <- scenario %>% group_by(year) %>% 
     summarise(Gini = ineq(LE, type = "Gini"),
-              gap = max(LE) - min(LE),
+              Range = max(LE, na.rm = T) - min(LE, na.rm = T),
               COV = ineq(LE, type = "var"),
-              Theil = ineq(LE, type = "Theil"))
+              Variance = var(LE, na.rm = T))
   
   e <- ggplot(d, aes(x = year, y = Gini)) +
         geom_point() +
         geom_smooth(method = "lm")
   
-  f <- ggplot(d, aes(x = year, y = gap)) +
+  f <- ggplot(d, aes(x = year, y = Range)) +
      geom_point()+
         geom_smooth(method = "lm")
   
@@ -60,7 +61,7 @@ analyse_scenario <- function(scenario) {
      geom_point()+
         geom_smooth(method = "lm")
   
-  h <- ggplot(d, aes(x = year, y = Theil)) +
+  h <- ggplot(d, aes(x = year, y = Variance)) +
      geom_point()+
         geom_smooth(method = "lm")
   
@@ -86,6 +87,9 @@ scenario1 <- expand.grid(area=1:10, year=1:20) %>%
   mutate(LE0 = as.numeric(rep(sort(rnorm(10, 80, 2)), 20))) %>%
   group_by(year, area) %>%
   mutate(LE = LE0+rnorm(1,0,0.1)) %>%
+  ungroup %>% 
+  group_by(area) %>% 
+  mutate(LE0 = first(na.omit(LE))) %>%
   ungroup
 
 analyse_scenario(scenario1)
@@ -103,6 +107,9 @@ scenario2 <- expand.grid(area=1:10, year=1:20) %>%
   mutate(LE0 = as.numeric(rep(sort(rnorm(10, 80, 2)), 20))) %>%
   group_by(year, area) %>%
   mutate(LE = LE0 + rnorm(1,0,0.1) + 2/20 * year) %>%
+  ungroup %>% 
+  group_by(area) %>% 
+  mutate(LE0 = first(na.omit(LE))) %>%
   ungroup
 
 
@@ -110,9 +117,11 @@ analyse_scenario(scenario2)
 
 ```
 
-We find no statistically significant beta-convergence, but significant sima-convergence (when considering Gini, CoV or Theil). I think this is a consequence of these measures depending on the mean of the distribution, which in our case increased, while the absolute differences between the units stayed the same.
+We find no statistically significant beta-convergence, but (on some runs) significant sima-convergence when considering Gini and CoV - not when considering range and variance.
 
-The literature says that beta-convergence is a necessary precondition of sigma-convergence, but I think this is true only when usind measures of dispersion such as range, sd and variance, which do not depend on the mean.
+The literature (e.g. Sala-i-Martin, 1996; Jannsen, 2017) says that beta-convergence is a necessary precondition of sigma-convergence, but I think this is true only when using measures of dispersion such as range, sd and variance, which do not depend on the mean. In fact, if we go back to the Sala-i-Martin publication that summarises the classical approach to convergence analysis, they equate dispersion with **distance** - e.g. gap or range. In this case, indeed, it would be impossible to have a narrower gap between units at the end of observation without different growth rates between units with the initially poorer performing units enjoying higher rates than the initially better performing units.
+
+However, relative measures of dispersion, such as Gini, CoV or Theil, do not measure the gap or range per-se, but rather measure it's size relative to the mean. So if the central tendency of the distribution increases with the range between units staying constant, we can indeed expect a significant decrease in these measures of dispersion. In this case, however, they measure the extent of relative inequality; see also Mackenbach's (2015) discussion of absolute and relative mortality inequalities.
 
 ## Unequal growth scenarios without rank change
 
@@ -129,6 +138,9 @@ scenario3 <- expand.grid(area=1:10, year=1:20) %>%
   mutate(LE = ifelse(area %in% c(8,9,10), LE0 + year * 2/20, LE0 + year * 1/20)) %>%
   group_by(year, area) %>%
   mutate(LE = LE + rnorm(1,0,0.1)) %>%
+  ungroup %>% 
+  group_by(area) %>% 
+  mutate(LE0 = first(na.omit(LE))) %>%
   ungroup
 
 analyse_scenario(scenario3)
@@ -148,6 +160,9 @@ scenario4 <- expand.grid(area=1:10, year=1:20) %>%
   mutate(LE = ifelse(area %in% c(1,2,3), LE0 + year * 1/20, LE0 + year * 2/20)) %>%
   group_by(year, area) %>%
   mutate(LE = LE + rnorm(1,0,0.1)) %>%
+  ungroup %>% 
+  group_by(area) %>% 
+  mutate(LE0 = first(na.omit(LE))) %>%
   ungroup
 
 analyse_scenario(scenario4)
@@ -166,6 +181,9 @@ scenario5 <- expand.grid(area=1:10, year=1:20) %>%
   mutate(LE = LE0 + year * 2/20) %>%
   group_by(year, area) %>%
   mutate(LE = LE + rnorm(1,0,0.1)) %>%
+  ungroup %>% 
+  group_by(area) %>% 
+  mutate(LE0 = first(na.omit(LE))) %>%
   ungroup
 
 scenario5[scenario5$year == 1 & scenario5$area == 1,]$LE <- scenario5[scenario5$year == 1 & scenario5$area == 1,]$LE-2
@@ -181,67 +199,135 @@ scenario5[scenario5$year == 2 & scenario5$area == 1,]$LE <- scenario5[scenario5$
 analyse_scenario(scenario5)
 ```
 
-Same situation. It seems to me that the outlier hypothesis is not realistic. 
+Same situation. It seems to me that the outlier hypothesis is not sufficient, unless it impact a large number of areas and causes rank changes (see later).
+
+### Scenario 6: Polarisation
+
+In this scenario, two convergence clubs form.
+
+```{r}
+scenario6 <- expand.grid(area=1:10, year=1:20) %>% 
+  mutate(LE0 = as.numeric(rep(sort(rnorm(10, 80, 2)), 20))) %>%
+  mutate(LE = ifelse(area %in% c(1,2,3,4,5), LE0 - year * 1/20 * (area-1)/5, LE0 + year * 1/20 * (10-area)/5)) %>%
+  group_by(year, area) %>%
+  mutate(LE = LE + rnorm(1,0,0.1)) %>%
+  ungroup %>% 
+  group_by(area) %>% 
+  mutate(LE0 = first(na.omit(LE))) %>%
+  ungroup
+analyse_scenario(scenario6)
+```
+
+We can see that the range indicator is very insensitive to changes in the middle of the distribution, while the other indicators successfuly show an increase in inequality - sigma-divergence. As expected, we can also confirm beta-divergence.
 
 ## Rank changes
 
 In this set of scenarios, we will get areas to change rank.
 
-### Scenario 6: The laggards catch up
+### Scenario 7: The laggards catch up
 
 The laggards here have four-times the LE growth compared to the rest.
 
 ```{r}
 
-scenario6 <- expand.grid(area=1:10, year=1:20) %>% 
+scenario7<- expand.grid(area=1:10, year=1:20) %>% 
   mutate(LE0 = as.numeric(rep(sort(rnorm(10, 80, 2)), 20))) %>%
   mutate(LE = ifelse(area %in% c(1,2,3), LE0 + year * 4/20, LE0 + year * 1/20)) %>%
   group_by(year, area) %>%
   mutate(LE = LE + rnorm(1,0,0.1)) %>%
-  ungroup
-
-analyse_scenario(scenario6)
-
-```
-
-This looks like a classic catching up scenario, and it results in both beta- and sigma-convergence.
-
-### Scenario 7: The laggards catch up, but the middle flounders
-
-In this scenario, the top performers keep improving, the bottom performers catch up, and the middle sort of stays still.
-
-```{r}
-
-scenario7 <- expand.grid(area=1:10, year=1:20) %>% 
-  mutate(LE0 = as.numeric(rep(sort(rnorm(10, 80, 2)), 20))) %>%
-  mutate(LE = ifelse(area %in% c(1,2,3), LE0 + year * 3/20, LE0 + year * 1/20)) %>%
-  mutate(LE = ifelse(area %in% c(5,6,7), LE0 - year * 0.5/20, LE)) %>%
-  group_by(year, area) %>%
-  mutate(LE = LE + rnorm(1,0,0.1)) %>%
+  ungroup %>% 
+  group_by(area) %>% 
+  mutate(LE0 = first(na.omit(LE))) %>%
   ungroup
 
 analyse_scenario(scenario7)
 
 ```
 
-This results in both beta- and sigma-convergence, so no luck with recreating the paradox yet. 
+This looks like a classic catching up scenario, and it results in both beta- and sigma-convergence.
 
-### Scenario 8: The laggards catch up, but the middle crash
+### Scenario 8: The laggards catch up, but the middle flounders
 
-In this scenario,the bottom performers catch up, and the middle performers actually loose ground.
+In this scenario, the top performers keep improving, the bottom performers catch up, and the middle sort of stays still.
 
 ```{r}
 
 scenario8 <- expand.grid(area=1:10, year=1:20) %>% 
   mutate(LE0 = as.numeric(rep(sort(rnorm(10, 80, 2)), 20))) %>%
-  mutate(LE = ifelse(area %in% c(1,2,3), LE0 + year * 2/20, LE0 + year * 1/20)) %>%
-  mutate(LE = ifelse(area %in% c(4,5), LE0 - year * 1/20, LE)) %>%
+  mutate(LE = ifelse(area %in% c(1,2,3), LE0 + year * 3/20, LE0 + year * 1/20)) %>%
+  mutate(LE = ifelse(area %in% c(5,6,7), LE0 - year * 0.5/20, LE)) %>%
   group_by(year, area) %>%
   mutate(LE = LE + rnorm(1,0,0.1)) %>%
+  ungroup %>% 
+  group_by(area) %>% 
+  mutate(LE0 = first(na.omit(LE))) %>%
   ungroup
 
 analyse_scenario(scenario8)
 
 ```
 
-This specific configuration recreates the paradox. We have the very bottom performers doing very well (catching up), and the mid-tier performers loosing substantial ground. It is very interesting that the scenario is very dependent on how many areas we include in which group. The next step is to hash out these limits more precisely. 
+This results in both beta- and sigma-convergence, so no luck with recreating the paradox yet. 
+
+### Scenario 9: The laggards catch up, but the middle deteriorates
+
+In this scenario,the bottom performers catch up, and the middle performers actually loose ground.
+
+```{r}
+
+scenario9 <- expand.grid(area=1:10, year=1:20) %>% 
+  mutate(LE0 = as.numeric(rep(sort(rnorm(10, 80, 2)), 20))) %>%
+  mutate(LE = ifelse(area %in% c(1,2,3), LE0 + year * 2/20, LE0 + year * 1/20)) %>%
+  mutate(LE = ifelse(area %in% c(5,6,7), LE0 - year * 2/20, LE)) %>%
+  group_by(year, area) %>%
+  mutate(LE = LE + rnorm(1,0,0.1)) %>%
+  ungroup %>% 
+  group_by(area) %>% 
+  mutate(LE0 = first(na.omit(LE))) %>%
+  ungroup
+
+analyse_scenario(scenario9)
+
+```
+
+This configuration recreates the paradox. We have the very bottom performers doing very well (catching up), and the mid-tier performers losing **substantial** ground. It is very interesting that the scenario is very dependent on how many areas we include in which group, their initial conditions, and how much ground the middle is losing. 
+
+The next step is to hash out these limits more precisely by breaking apart the formulae for beta- and sigma-convergence and using simulations to detect critial points in each.
+
+### Scenario 10: New entrants
+In this scenarios, new units enter at a certain time (in our case, 5 years through the observation). In line with EU expansion, they will enter at the bottom of the distribution.
+
+```{r}
+
+scenario10 <- expand.grid(area=1:10, year=1:20) %>% 
+  mutate(LE0 = as.numeric(rep(sort(rnorm(10, 80, 2)), 20))) %>%
+  mutate(LE = LE0 + 2/20 * year) %>%
+  mutate(LE = ifelse(area %in% c(1,2,3) & year < 6, NA, LE)) %>%
+  mutate(LE0 = ifelse(area %in% c(1,2,3), LE0 + 2/20 * 6, LE0)) %>% 
+  group_by(year, area) %>%
+  mutate(LE = LE + rnorm(1,0,0.1)) %>%
+  ungroup %>%
+  group_by(area) %>% 
+  mutate(LE0 = first(na.omit(LE))) %>%
+  ungroup
+
+
+analyse_scenario(scenario10)
+
+```
+
+The new entrants scenario results in sigma-divergence (false due to uncorrected step).
+
+## Taking apart beta- and sigma-convergence formulae
+
+Unadjusted beta-convergence occurs when the coefficient in the following formula is statistically significant negative:
+
+(yT/yt0) / (T - to) = a + b * yt0
+
+Parsing this into words, the outcome is the annualised growth rate and the only predictor is the outcome at the start of observation.
+
+I will focus on the Gini coefficient here, since the above simulations show that the other relative dispersion indicators exhibit the same qualitative behaviour.
+
+An empirical Gini formula is given by Cowell as
+
+G = 2 / (n^2 * yhat) * [y(1) + 2* y(2) + 3 * y(3) ... n*y(n)] - (n + 1)/n
